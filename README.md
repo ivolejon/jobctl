@@ -85,7 +85,7 @@ Without job names, `install` and `uninstall` use the jobs in the current config.
 
 ## Runs and state
 
-The state directory is selected by `--state-dir PATH`, `$JOBCTL_STATE_DIR`, or `$XDG_STATE_HOME/jobctl` (default: `~/.local/state/jobctl`). Use a private directory. `locks/` contains persistent flock files; do not delete them. Each `runs/<job>/<run-id>/` directory contains `output.log` (`0600`) and the atomically written `meta.json`. The `latest` symlink points to the newest run; if the link is missing or stale, `jobctl` checks the run directories directly.
+The state directory is selected by `--state-dir PATH`, `$JOBCTL_STATE_DIR`, or `$XDG_STATE_HOME/jobctl` (default: `~/.local/state/jobctl`). Use a private directory. `locks/` contains persistent flock files; do not delete them. Each `runs/<job>/<run-id>/` directory contains `output.log` (`0600`) and the atomically written `meta.json`. A run started by this version also writes `process.json` with the runner's pid and start time; `jobctl stop` verifies them before signaling. The `latest` symlink points to the newest run; if the link is missing or stale, `jobctl` checks the run directories directly.
 
 After a run, `jobctl` removes older completed runs for the same job according to `retention_days` (default: 30 days). A value of `0` keeps the current run but may remove earlier completed runs immediately. Runs left marked as `running` after a crash or power loss are not cleaned up automatically.
 
