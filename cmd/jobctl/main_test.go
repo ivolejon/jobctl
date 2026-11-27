@@ -342,7 +342,7 @@ kill_grace = '120ms'
 				t.Fatalf("not forwarded: %s", data)
 			}
 			eventually(t, func() bool {
-				return errors.Is(syscall.Kill(-pgid, 0), syscall.ESRCH) && errors.Is(syscall.Kill(child, 0), syscall.ESRCH)
+				return !groupAlive(pgid) && !processAlive(child)
 			}, "killed process group (including descendant)")
 		})
 	}
