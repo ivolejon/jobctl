@@ -1,15 +1,22 @@
 # jobctl
 
-`jobctl` kör registrerade skaljobb på Linux och macOS. Samma körväg används manuellt och från systemd eller launchd. `jobctl` har ingen daemon: operativsystemet sköter schemat, och körningar sparas som filer.
+[![CI](https://github.com/ivolejon/jobctl/actions/workflows/ci.yml/badge.svg)](https://github.com/ivolejon/jobctl/actions/workflows/ci.yml)
+
+`jobctl` kör skaljobb från en versionshanterad `jobs.toml` på Linux och macOS. Kör ett jobb direkt eller schemalägg det med systemd eller launchd, utan en egen daemon. Manuella och schemalagda körningar delar samma lås, tidsgräns, logg och körningskvitto.
 
 ## Bygg och prova
 
 Go 1.23 eller senare behövs för att bygga. TOML-biblioteket `github.com/pelletier/go-toml/v2` är det enda tredjepartsberoendet och byggs in i binären. Ingen Go-installation behövs vid körning. Schemaläggning kräver en tillgänglig användarinstans av systemd respektive launchd.
 
 ```sh
+git clone https://github.com/ivolejon/jobctl.git
+cd jobctl
 CGO_ENABLED=0 go install ./cmd/jobctl
-# Använd den installerade binären på en beständig plats för schemaläggning.
-# Kör följande från repots rot, där jobs.toml innehåller jobbet demo.
+```
+
+Se till att Go:s installationskatalog (normalt `$(go env GOPATH)/bin`) finns i `PATH`. Kör sedan från repots rot, där `jobs.toml` innehåller jobbet `demo`:
+
+```sh
 jobctl validate
 jobctl list
 jobctl run demo --json
@@ -17,10 +24,10 @@ jobctl status demo
 jobctl logs demo
 jobctl logs demo --path
 jobctl install demo --print
-jobctl install demo
-jobctl uninstall demo
 jobctl version
 ```
+
+När du vill aktivera schemat på din maskin, kör `jobctl install demo`. Ta bort det med `jobctl uninstall demo`. Använd en binär på en beständig plats för schemalagda jobb.
 
 Demo-jobbet skriver `.jobctl-demo.txt` i konfigurationens katalog. `list` och `status` har även `--json`. Med `run --dry-run` kan du granska kommandot, arbetskatalogen, miljövariabelnamnen, tidsgränsen och låsen utan att starta jobbet eller skriva till state. Kör `jobctl run --wait demo --wait-timeout 5m` för att vänta på lås; standard är att inte vänta alls.
 
@@ -97,3 +104,7 @@ done
 ```
 
 CI kör på Linux och macOS med Go 1.23. Integrationstesterna använder temporära kataloger och stubbar för `systemctl` och `launchctl`. Båda plattformarnas filformat jämförs mot golden-filer på varje plattform. Kör binären på avsedd plattform; Darwin-byggen använder macOS systembibliotek, men inget CGo eller externt paketerat bibliotek.
+
+## Licens
+
+[MIT](LICENSE).
