@@ -30,7 +30,7 @@ func parse(args []string) (options, error) {
 		if literal || !strings.HasPrefix(arg, "-") {
 			if o.command == "" {
 				switch arg {
-				case "list", "validate", "run", "status", "logs", "install", "uninstall", "version":
+				case "list", "validate", "run", "stop", "status", "logs", "install", "uninstall", "version":
 					o.command = arg
 				default:
 					return o, fmt.Errorf("unknown command %q", arg)
@@ -80,7 +80,7 @@ func parse(args []string) (options, error) {
 	switch o.command {
 	case "":
 		return o, fmt.Errorf("a command is required")
-	case "run", "logs":
+	case "run", "logs", "stop":
 		if n != 1 {
 			return o, fmt.Errorf("%s requires one job name", o.command)
 		}
