@@ -2,11 +2,11 @@
 
 [![CI](https://github.com/ivolejon/jobctl/actions/workflows/ci.yml/badge.svg)](https://github.com/ivolejon/jobctl/actions/workflows/ci.yml)
 
-`jobctl` kör skaljobb från en versionshanterad `jobs.toml` på Linux och macOS. Kör ett jobb direkt eller schemalägg det med systemd eller launchd, utan en egen daemon. Manuella och schemalagda körningar delar samma lås, tidsgräns, logg och körningskvitto.
+`jobctl` runs shell jobs from a version-controlled `jobs.toml` on Linux and macOS. Run a job on demand or schedule it with systemd or launchd. Both use the same execution path for locking, timeouts, logging, and run receipts. No daemon required.
 
-## Bygg och prova
+## Quick start
 
-Go 1.23 eller senare behövs för att bygga. TOML-biblioteket `github.com/pelletier/go-toml/v2` är det enda tredjepartsberoendet och byggs in i binären. Ingen Go-installation behövs vid körning. Schemaläggning kräver en tillgänglig användarinstans av systemd respektive launchd.
+Building requires Go 1.23 or later. The TOML library `github.com/pelletier/go-toml/v2` is the only third-party dependency and is compiled into the binary. Go is not required at runtime. Scheduled runs require an available systemd user manager or a launchd GUI domain.
 
 ```sh
 git clone https://github.com/ivolejon/jobctl.git
@@ -14,7 +14,7 @@ cd jobctl
 CGO_ENABLED=0 go install ./cmd/jobctl
 ```
 
-Se till att Go:s installationskatalog (normalt `$(go env GOPATH)/bin`) finns i `PATH`. Kör sedan från repots rot, där `jobs.toml` innehåller jobbet `demo`:
+Make sure Go's install directory (usually `$(go env GOPATH)/bin`) is on your `PATH`. From the repository root, try the `demo` job in the included `jobs.toml`:
 
 ```sh
 jobctl validate
@@ -27,17 +27,17 @@ jobctl install demo --print
 jobctl version
 ```
 
-När du vill aktivera schemat på din maskin, kör `jobctl install demo`. Ta bort det med `jobctl uninstall demo`. Använd en binär på en beständig plats för schemalagda jobb.
+The demo writes `.jobctl-demo.txt` next to the config file. To activate its schedule, run `jobctl install demo`; remove it with `jobctl uninstall demo`. Keep the binary at a stable path when scheduling jobs.
 
-Demo-jobbet skriver `.jobctl-demo.txt` i konfigurationens katalog. `list` och `status` har även `--json`. Med `run --dry-run` kan du granska kommandot, arbetskatalogen, miljövariabelnamnen, tidsgränsen och låsen utan att starta jobbet eller skriva till state. Kör `jobctl run --wait demo --wait-timeout 5m` för att vänta på lås; standard är att inte vänta alls.
+`list` and `status` also support `--json`. Use `run --dry-run` to inspect the command, working directory, environment variable names, timeout, and locks without running the job or writing state. A run does not wait for locks by default; to wait, use `jobctl run --wait demo --wait-timeout 5m`.
 
-## Konfiguration
+## Configuration
 
-Valordning: `--config PATH`, `$JOBCTL_CONFIG`, `./jobs.toml`, sedan `$XDG_CONFIG_HOME/jobctl/jobs.toml` (standard `~/.config/jobctl/jobs.toml`). `--config` och `--state-dir` kan anges före eller efter subkommandot. Subkommandots egna flaggor kan anges på båda sidor om jobbnamnet. Om namnet börjar med `-`, sätt flaggorna först och avsluta dem med `--`. Relativa `cwd`- och `env_file`-sökvägar utgår från konfigurationsfilens katalog. `~` och `~/…` expanderas till den aktuella användarens hemkatalog.
+`jobctl` looks for the config file in this order: `--config PATH`, `$JOBCTL_CONFIG`, `./jobs.toml`, then `$XDG_CONFIG_HOME/jobctl/jobs.toml` (default: `~/.config/jobctl/jobs.toml`). Pass `--config` and `--state-dir` before or after the subcommand. Subcommand flags can go on either side of the job name. If a job name starts with `-`, put flags first and use `--` before the name. Relative `cwd` and `env_file` paths are resolved from the config file's directory. `~` and `~/…` expand to the current user's home directory.
 
 ```toml
 [jobs.nightly-gate]
-description = "Nattlig testkörning"
+description = "Nightly test run"
 command = "scripts/nightly-gate.sh"
 cwd = "."
 schedule = "daily 02:00"
@@ -57,39 +57,56 @@ schedule = "every 30m"
 timeout = "10m"
 ```
 
-- Jobb- och låsnamn måste matcha `[a-z0-9-]+`. `command` är obligatoriskt. `cwd` måste finnas och är som standard konfigurationsfilens katalog.
-- `timeout` och `kill_grace` är positiva Go-varaktigheter, som standard `1h` och `30s`. `lock` kan vara ett namn eller en lista; som standard låses jobbnamnet. `lock = []` väljer bort låsning. Flera lås tas i sorterad ordning. Med `--wait` är standardgränsen `30m` för alla lås tillsammans.
-- `env_file` läses som text, inte som skal: en `KEY=VALUE` per rad. Tomma rader och rader som börjar med `#` (efter eventuellt inledande blanksteg) ignoreras. Värdet efter första `=` används bokstavligt. Ordningen är ärvd miljö, `env_file`, sedan `env`; den sista definitionen vinner. `validate` kontrollerar också miljöfilerna.
-- `enabled` är `true` som standard. Inaktiva jobb kan köras manuellt men hoppas över vid `install` utan namn, och körningar med `--trigger schedule` blockeras. Avinstallera tidigare skapade enheter uttryckligen; ändringar i TOML tar inte bort dem.
-- `validate` ger fil och rad för varje valideringsfel, inklusive okända fält. Fel i själva TOML-syntaxen (eller motstridiga TOML-nycklar) kan göra att avkodaren stannar vid första felet; rätta det först och kör `validate` igen.
+- Job and lock names must match `[a-z0-9-]+`. `command` is required. `cwd` must be an existing directory and defaults to the config file's directory.
+- `timeout` and `kill_grace` are positive Go durations and default to `1h` and `30s`. `lock` accepts a name or a list, and defaults to the job name. Use `lock = []` to disable locking. Multiple locks are taken in sorted order. With `--wait`, the default is `30m` total across all locks.
+- `env_file` is parsed as text, never as shell code. Use one `KEY=VALUE` per line; blank lines and lines beginning with `#` after optional leading whitespace are ignored. The value after the first `=` is taken literally. Precedence is inherited environment, then `env_file`, then `env`, with later values winning. `validate` also checks environment files.
+- `enabled` defaults to `true`. Disabled jobs can still run manually, but `install` without names skips them and runs with `--trigger schedule` are blocked. Uninstall existing units explicitly; changing the TOML does not remove them.
+- `validate` reports the file and line for each validation error, including unknown fields. Invalid TOML syntax or conflicting keys may stop decoding at the first error. Fix it and run `validate` again.
 
-Konfigurationen innehåller **betrodda** kommandon. Lägg inte hemligheter i TOML eller direkt i kommandoraden: kommandot skrivs ordagrant i kvittot. Lägg känsliga miljövärden i en separat, åtkomstskyddad miljöfil utanför versionskontrollen. `jobctl` skriver inte dessa värden, men `output.log` innehåller jobbets stdout och stderr ordagrant: jobbet får inte skriva ut hemligheter.
+Only run **trusted** configurations. Do not put secrets in TOML or in the command itself: receipts record the command verbatim. Keep sensitive environment values in an access-restricted file outside version control. `jobctl` does not print those values, but `output.log` captures the job's stdout and stderr verbatim, so the job itself must not print secrets.
 
-## Schema och installation
+## Scheduling and installation
 
-| Schema | Exempel | Betydelse |
+| Schedule | Example | Meaning |
 | --- | --- | --- |
-| `daily HH:MM` | `daily 02:00` | Varje dag |
-| `weekly DAG[,DAG...] HH:MM` | `weekly mon,thu 02:00` | Angivna veckodagar (`mon`–`sun`, utan dubbletter) |
-| `every N[s/m/h]` | `every 30m` | Intervall med ett positivt heltal i sekunder, minuter eller timmar |
+| `daily HH:MM` | `daily 02:00` | Every day |
+| `weekly DAY[,DAY...] HH:MM` | `weekly mon,thu 02:00` | On the specified weekdays (`mon`–`sun`, no duplicates) |
+| `every N[s/m/h]` | `every 30m` | A positive integer interval in seconds, minutes, or hours |
 
-Kalenderscheman använder maskinens lokala tidszon. `status` visar en uppskattning, inte ett svar från schemaläggaren. Intervall räknas fram från den senaste registrerade starten (även manuell), eller från nu om ingen körning finns. Inloggning, vila, överlappande körningar och sommartid kan påverka det faktiska utfallet.
+Calendar schedules use the machine's local time zone. `status` shows an estimate, not the scheduler's actual next run. For interval jobs, the estimate is based on the latest recorded start (including manual runs), or on the current time if there have been no runs. Login sessions, sleep, overlapping runs, and daylight saving time can affect actual run times.
 
-`install --print` skriver enhetsfilerna till stdout utan att skapa filer eller anropa schemaläggaren. Vid installation lagras både en kopia under `generated/` i state och en installerad fil i schemaläggarens katalog. Enheterna använder absoluta sökvägar till binär, konfiguration och state och skickar `--trigger schedule`. Flyttar du någon av dessa måste enheten installeras på nytt. `--force` krävs för att ersätta en omärkt fil; `uninstall` tar inte bort omärkta filer. `install` och `uninstall` utan namn utgår från jobben i den aktuella konfigurationen. Om ett aktivt jobb saknar schema, ange uttryckligen vilka andra jobb du vill installera. Avinstallera ett jobb innan du tar bort det från TOML. Vid ett fel från schemaläggaren kan filerna redan ha skrivits; läs diagnostiken och kontrollera enheternas tillstånd innan du försöker igen.
+`install --print` prints scheduler files to stdout without creating files or invoking the scheduler. An actual installation writes each file to the scheduler's directory and keeps a copy under `generated/` in the state directory. The installed files pin absolute paths to the binary, config, and state directory, and pass `--trigger schedule`. Reinstall if any of those paths change. Use `--force` to overwrite unmarked files; `uninstall` never removes unmarked files.
 
-- **Linux:** `~/.config/systemd/user/jobctl-<namn>.{service,timer}`. Användarenheter körs normalt bara medan användarens session är aktiv. För körning utan inloggning: konfigurera `loginctl enable-linger <användare>` själv. Kalenderbaserade timers har `Persistent=true` och kan ta igen en missad körning när timern åter aktiveras; de kör inte alla missade tillfällen. Intervalltimers använder `OnActiveSec` för första starten och `OnUnitActiveSec` därefter, utan `Persistent`. Tjänsten använder `TimeoutStartSec=infinity` så att tidsgränsen ägs av `jobctl`. `ExecStart=:` stänger av systemd:s variabelexpansion av argumenten. Arbetskataloger med radbrytningar, avslutande blanksteg eller avslutande omvänt snedstreck stöds inte i `WorkingDirectory=`; installationen avvisar dem i stället för att skriva en felaktig enhet.
-- **macOS:** `~/Library/LaunchAgents/com.jobctl.<namn>.plist`, i användarens `gui/<uid>`-domän. Avinstallation använder launchctls tjänsteadress `gui/<uid>/com.jobctl.<namn>` som ett argument till `bootout`. launchd kör inte missade tider efter omstart. Ett kalendertillfälle som missas under vila kan däremot köras vid uppvaknande. Intervall är `StartInterval` i sekunder och har ingen återhämtning efter omstart.
-- `nice` skickas till respektive schemaläggare (inom OS:ets egna gränser); `io_idle` används bara av systemd. Dessa inställningar ändrar inte den manuella processens prioritet.
+Without job names, `install` and `uninstall` use the jobs in the current config. If an enabled job has no schedule, explicitly name the jobs you want to install. Uninstall a job before deleting it from the config. A scheduler error can occur after files have been written; check the diagnostics and scheduler state before retrying.
 
-## Körningar och tillstånd
+- **Linux:** `~/.config/systemd/user/jobctl-<name>.{service,timer}`. User units normally run only while the user's session is active. To run without logging in, configure `loginctl enable-linger <user>` yourself. Calendar timers use `Persistent=true` and can catch up once when reactivated, rather than replaying every missed occurrence. Interval timers use `OnActiveSec` for the first run and `OnUnitActiveSec` thereafter, without `Persistent`. The service sets `TimeoutStartSec=infinity` so `jobctl` controls the timeout. `ExecStart=:` disables systemd environment variable expansion in its arguments. Installation rejects working directories containing line breaks or ending in whitespace or a backslash because `WorkingDirectory=` cannot represent them reliably.
+- **macOS:** `~/Library/LaunchAgents/com.jobctl.<name>.plist`, in the user's `gui/<uid>` domain. Uninstall targets `gui/<uid>/com.jobctl.<name>` with `launchctl bootout`. launchd does not replay missed runs after a reboot. A calendar occurrence missed during sleep may run on wake. `StartInterval` uses seconds and does not catch up after a reboot.
+- `nice` is passed to the scheduler, subject to OS limits. `io_idle` applies only to systemd. Neither changes the priority of a manual run.
 
-Tillståndets rot är `--state-dir PATH`, `$JOBCTL_STATE_DIR` eller `$XDG_STATE_HOME/jobctl` (standard `~/.local/state/jobctl`). Välj en privat katalog. `locks/` innehåller beständiga flock-filer; radera dem inte. Under `runs/<jobb>/<run-id>/` sparas `output.log` (`0600`) och det atomiskt skrivna `meta.json`. `latest` pekar på senaste körningen; saknade eller inaktuella länkar hanteras genom att läsa körningskatalogerna. Efter en körning rensas äldre avslutade körningar för samma jobb efter `retention_days` (standard 30 dygn). `0` behåller den aktuella körningen men kan rensa tidigare avslutade körningar direkt. Kvitton som står kvar som `running` efter exempelvis strömavbrott rensas inte automatiskt.
+## Runs and state
 
-Jobbet körs med `/bin/sh -c` i en egen processgrupp. Vid timeout skickas `SIGTERM`; vid `SIGINT` eller `SIGTERM` till `jobctl` vidarebefordras signalen. Efter `kill_grace` får kvarvarande gruppmedlemmar `SIGKILL`. Processer som själva lämnar gruppen omfattas inte av detta. Ett körningskvitto visar utfallet (`passed`, `failed`, `timed_out`, `interrupted` eller `start_failed`) och barnets faktiska exitkod eller signal. En pågående körning visas som `running`. Inget kvitto skapas om lås inte kan tas.
+The state directory is selected by `--state-dir PATH`, `$JOBCTL_STATE_DIR`, or `$XDG_STATE_HOME/jobctl` (default: `~/.local/state/jobctl`). Use a private directory. `locks/` contains persistent flock files; do not delete them. Each `runs/<job>/<run-id>/` directory contains `output.log` (`0600`) and the atomically written `meta.json`. The `latest` symlink points to the newest run; if the link is missing or stale, `jobctl` checks the run directories directly.
 
-`jobctl run` lämnar över jobbets egen exitkod, även om den sammanfaller med `jobctl`:s koder. Kontrollera kvittots `status` vid överlapp. `jobctl` använder `124` för timeout, `125` om skalprocessen inte kan startas, `126` för låskonflikt, `130`/`143` för avbrott från SIGINT/SIGTERM, `64` för användningsfel, `78` för konfigurationsfel och `70` för interna fel. Ett jobb som självt dör av en signal ger `128 + signalnummer` och status `failed`. Diagnostik och den vanliga `run`-sammanfattningen går till stderr; exempelvis JSON, logginnehåll och `install --print` går till stdout.
+After a run, `jobctl` removes older completed runs for the same job according to `retention_days` (default: 30 days). A value of `0` keeps the current run but may remove earlier completed runs immediately. Runs left marked as `running` after a crash or power loss are not cleaned up automatically.
 
-## Verifiering
+Jobs run under `/bin/sh -c` in a separate process group. On timeout, `jobctl` sends `SIGTERM`. If `jobctl` receives `SIGINT` or `SIGTERM`, it forwards that signal. After `kill_grace`, any remaining group members receive `SIGKILL`. Processes that leave the group are not covered. The run receipt records the outcome (`passed`, `failed`, `timed_out`, `interrupted`, or `start_failed`) and the child's actual exit code or signal. A run in progress is shown as `running`. There is no receipt if locks could not be acquired.
+
+`jobctl run` returns the job's own exit code, even when it overlaps with one of the codes below. Check the receipt's `status` to tell them apart. A job that dies from a signal on its own returns `128 + signal number` with status `failed`.
+
+| Exit code | Meaning |
+| ---: | --- |
+| `0` | Success |
+| `64` | Invalid command usage |
+| `70` | Internal error |
+| `78` | Configuration error |
+| `124` | Job timed out |
+| `125` | Shell process could not start |
+| `126` | Lock was busy or the wait timed out |
+| `130` / `143` | Interrupted by `SIGINT` / `SIGTERM` |
+
+Diagnostics and the default `run` summary go to stderr. JSON, log output, and `install --print` go to stdout.
+
+## Verification
 
 ```sh
 export CGO_ENABLED=0
@@ -103,8 +120,8 @@ for os in linux darwin; do
 done
 ```
 
-CI kör på Linux och macOS med Go 1.23. Integrationstesterna använder temporära kataloger och stubbar för `systemctl` och `launchctl`. Båda plattformarnas filformat jämförs mot golden-filer på varje plattform. Kör binären på avsedd plattform; Darwin-byggen använder macOS systembibliotek, men inget CGo eller externt paketerat bibliotek.
+CI runs on Linux and macOS with Go 1.23. Integration tests use temporary directories and stubs for `systemctl` and `launchctl`; both scheduler formats are checked against golden files on each platform. Darwin builds use macOS system libraries, but no cgo or externally packaged libraries.
 
-## Licens
+## License
 
 [MIT](LICENSE).
