@@ -75,20 +75,18 @@ func Execute(root string, j *config.Job, env map[string]string, opts Options) (*
 	if err != nil {
 		return nil, Internal, err
 	}
+	// Write the process record before the running receipt. A reader that sees
+	// the running status must be able to stop the run it names.
+	psStart, _ := processStart(os.Getpid())
+	if err = state.WriteProcess(dir, os.Getpid(), started, psStart); err != nil {
+		_ = os.RemoveAll(dir)
+		return nil, Internal, err
+	}
 	r := &state.Receipt{Version: 1, Job: j.Name, RunID: id, Trigger: opts.Trigger, Status: "running", Command: j.Command, Cwd: j.Cwd, Schedule: j.Schedule, StartedAt: started.UTC(), WaitedSeconds: waited.Seconds(), Log: state.LogName}
 	if err = state.WriteReceipt(dir, r); err != nil {
 		return nil, Internal, err
 	}
 	state.PublishLatest(root, j.Name)
-	psStart, _ := processStart(os.Getpid())
-	if err = state.WriteProcess(dir, os.Getpid(), started, psStart); err != nil {
-		utc := time.Now().UTC()
-		r.Status = "start_failed"
-		r.EndedAt = &utc
-		r.DurationSeconds = utc.Sub(started).Seconds()
-		_ = state.WriteReceipt(dir, r)
-		return r, Internal, err
-	}
 	code, runErr := executeProcess(j, env, r, dir, stop)
 	ended := time.Now()
 	utc := ended.UTC()

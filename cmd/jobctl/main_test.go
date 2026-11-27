@@ -359,6 +359,13 @@ kill_grace = '200ms'
 		r, err := state.Latest(s.root, "hold")
 		return err == nil && r != nil && r.Status == "running"
 	}, "running receipt")
+	running, dir, err := state.LatestRunning(s.root, "hold")
+	if err != nil || running == nil {
+		t.Fatalf("no running receipt: %v", err)
+	}
+	if _, err := state.ReadProcess(dir); err != nil {
+		t.Fatalf("the running receipt has no process record: %v", err)
+	}
 	_, message := s.call(t, 0, "stop", "hold")
 	if !strings.Contains(message, "stopped") {
 		t.Fatalf("unexpected stop output: %s", message)
