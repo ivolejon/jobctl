@@ -164,7 +164,8 @@ func check(path string, force bool) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	if !force && !bytes.HasPrefix(data, []byte(marker)) {
+	if !force && !bytes.HasPrefix(data, []byte(marker)) &&
+		(legacyMarker == "" || !bytes.HasPrefix(data, []byte(legacyMarker))) {
 		return nil, fmt.Errorf("refusing to replace or remove unmarked file %s", path)
 	}
 	return data, nil

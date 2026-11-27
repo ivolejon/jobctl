@@ -11,6 +11,7 @@ import (
 const platform = "launchd"
 const platformDir = "Library/LaunchAgents"
 const marker = LaunchdMarker
+const legacyMarker = LegacyLaunchdMarker
 
 func render(u Unit) ([]File, error) { return Launchd(u) }
 func platformFiles(name string) []File {
