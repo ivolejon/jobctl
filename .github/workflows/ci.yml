@@ -20,6 +20,17 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '1.23.x'
+      - name: Check formatting
+        run: |
+          files=$(gofmt -l .)
+          if [ -n "$files" ]; then
+            echo "gofmt found unformatted files:"
+            echo "$files"
+            exit 1
+          fi
+      - name: Lint launchd plists
+        if: runner.os == 'macOS'
+        run: plutil -lint internal/schedule/testdata/*.plist
       - run: go vet ./...
       - run: go test ./...
       - run: go build ./...
