@@ -5,6 +5,7 @@ package schedule
 const platform = "systemd"
 const platformDir = ".config/systemd/user"
 const marker = SystemdMarker
+const legacyMarker = ""
 
 func render(u Unit) ([]File, error) { return Systemd(u) }
 func platformFiles(name string) []File {

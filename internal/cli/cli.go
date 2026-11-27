@@ -45,6 +45,21 @@ func Main(args []string, out, diag io.Writer, build Build) int {
 	if a.opts.command == "version" {
 		return a.result(version(out, build))
 	}
+	// Uninstalling a named job does not read the config: a job that was removed
+	// from jobs.toml still has units that must be cleaned up. Without names,
+	// uninstall uses the jobs in the current config.
+	if a.opts.command == "uninstall" && len(a.opts.names) > 0 {
+		for _, name := range a.opts.names {
+			if !config.Name.MatchString(name) {
+				return a.fail(usageError, fmt.Errorf("invalid job name %q", name))
+			}
+		}
+		root, err := state.Resolve(a.opts.stateDir)
+		if err != nil {
+			return a.fail(run.Internal, err)
+		}
+		return a.result(schedule.Uninstall(root, normalizeNames(a.opts.names)))
+	}
 	path, err := config.Find(a.opts.config)
 	if err != nil {
 		return a.fail(configError, err)
@@ -98,9 +113,13 @@ func (a app) names() []string {
 	if len(a.opts.names) == 0 {
 		return config.Keys(a.cfg.Jobs)
 	}
-	names := slices.Clone(a.opts.names)
-	slices.Sort(names)
-	return slices.Compact(names)
+	return normalizeNames(a.opts.names)
+}
+
+func normalizeNames(names []string) []string {
+	out := slices.Clone(names)
+	slices.Sort(out)
+	return slices.Compact(out)
 }
 func (a app) run() int {
 	o := a.opts

@@ -467,3 +467,39 @@ esac
 		t.Fatalf("unexpected scheduler calls:\n%s", calls)
 	}
 }
+
+func TestUninstallWithoutConfig(t *testing.T) {
+	s := setup(t, "[jobs.demo]\ncommand = 'true'\nschedule = 'weekly mon 02:05'\n")
+	var bin, installed, generated string
+	switch runtime.GOOS {
+	case "darwin":
+		bin = "launchctl"
+		installed = "Library/LaunchAgents/com.jobctl.demo.plist"
+		generated = "launchd/demo.plist"
+	case "linux":
+		bin = "systemctl"
+		installed = ".config/systemd/user/jobctl-demo.timer"
+		generated = "systemd/demo.timer"
+	default:
+		t.Skip("unsupported scheduler")
+	}
+	write(t, filepath.Join(s.stub, bin), "#!/bin/sh\nexit 0\n", 0700)
+	s.call(t, 0, "install", "demo")
+	installed = filepath.Join(s.home, installed)
+	generated = filepath.Join(s.root, "generated", generated)
+	for _, p := range []string{installed, generated} {
+		if _, err := os.Stat(p); err != nil {
+			t.Fatalf("install did not write %s: %v", p, err)
+		}
+	}
+	if err := os.Remove(s.cfg); err != nil {
+		t.Fatal(err)
+	}
+	s.call(t, 0, "uninstall", "demo")
+	for _, p := range []string{installed, generated} {
+		if _, err := os.Stat(p); !os.IsNotExist(err) {
+			t.Fatalf("uninstall without a config left %s: %v", p, err)
+		}
+	}
+	s.call(t, 64, "uninstall", "Bad_Name")
+}
