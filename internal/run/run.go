@@ -80,6 +80,15 @@ func Execute(root string, j *config.Job, env map[string]string, opts Options) (*
 		return nil, Internal, err
 	}
 	state.PublishLatest(root, j.Name)
+	psStart, _ := processStart(os.Getpid())
+	if err = state.WriteProcess(dir, os.Getpid(), started, psStart); err != nil {
+		utc := time.Now().UTC()
+		r.Status = "start_failed"
+		r.EndedAt = &utc
+		r.DurationSeconds = utc.Sub(started).Seconds()
+		_ = state.WriteReceipt(dir, r)
+		return r, Internal, err
+	}
 	code, runErr := executeProcess(j, env, r, dir, stop)
 	ended := time.Now()
 	utc := ended.UTC()

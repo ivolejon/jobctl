@@ -20,7 +20,7 @@ import (
 	"github.com/ivolejon/jobctl/internal/state"
 )
 
-const usage = "Usage: jobctl [--config PATH] [--state-dir PATH] {list|validate|run|status|logs|install|uninstall|version}"
+const usage = "Usage: jobctl [--config PATH] [--state-dir PATH] {list|validate|run|stop|status|logs|install|uninstall|version}"
 const usageError, configError = 64, 78
 
 type Build struct{ Version, Commit string }
@@ -44,6 +44,24 @@ func Main(args []string, out, diag io.Writer, build Build) int {
 	}
 	if a.opts.command == "version" {
 		return a.result(version(out, build))
+	}
+	// Stopping a job reads only the state directory. It does not need the
+	// config, so a job that was removed from jobs.toml can still be stopped.
+	if a.opts.command == "stop" {
+		name := a.opts.names[0]
+		if !config.Name.MatchString(name) {
+			return a.fail(usageError, fmt.Errorf("invalid job name %q", name))
+		}
+		root, err := state.Resolve(a.opts.stateDir)
+		if err != nil {
+			return a.fail(run.Internal, err)
+		}
+		message, err := run.Stop(root, name, 30*time.Second)
+		if err != nil {
+			return a.fail(1, err)
+		}
+		fmt.Fprintln(a.diag, message)
+		return 0
 	}
 	// Uninstalling a named job does not read the config: a job that was removed
 	// from jobs.toml still has units that must be cleaned up. Without names,

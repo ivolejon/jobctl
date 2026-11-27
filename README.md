@@ -89,6 +89,8 @@ The state directory is selected by `--state-dir PATH`, `$JOBCTL_STATE_DIR`, or `
 
 After a run, `jobctl` removes older completed runs for the same job according to `retention_days` (default: 30 days). A value of `0` keeps the current run but may remove earlier completed runs immediately. Runs left marked as `running` after a crash or power loss are not cleaned up automatically.
 
+Stop a running job with `jobctl stop NAME`. It sends `SIGTERM` to the runner, which forwards it to the job's process group, waits `kill_grace`, records the run as `interrupted` and exits 143. Stop reads the state directory only, so it works without the config. It checks the runner's process start time before signaling and refuses a reused pid. A run started before the process record existed cannot be stopped this way.
+
 Jobs run under `/bin/sh -c` in a separate process group. On timeout, `jobctl` sends `SIGTERM`. If `jobctl` receives `SIGINT` or `SIGTERM`, it forwards that signal. After `kill_grace`, any remaining group members receive `SIGKILL`. Processes that leave the group are not covered. The run receipt records the outcome (`passed`, `failed`, `timed_out`, `interrupted`, or `start_failed`) and the child's actual exit code or signal. A run in progress is shown as `running`. There is no receipt if locks could not be acquired.
 
 `jobctl run` returns the job's own exit code, even when it overlaps with one of the codes below. Check the receipt's `status` to tell them apart. A job that dies from a signal on its own returns `128 + signal number` with status `failed`.

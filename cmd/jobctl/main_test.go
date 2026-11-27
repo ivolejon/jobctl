@@ -348,6 +348,29 @@ kill_grace = '120ms'
 	}
 }
 
+func TestStop(t *testing.T) {
+	s := setup(t, `[jobs.hold]
+command = 'sleep 30'
+timeout = '60s'
+kill_grace = '200ms'
+`)
+	done, out, diag := start(t, s.command(t, "run", "hold", "--json"))
+	eventually(t, func() bool {
+		r, err := state.Latest(s.root, "hold")
+		return err == nil && r != nil && r.Status == "running"
+	}, "running receipt")
+	_, message := s.call(t, 0, "stop", "hold")
+	if !strings.Contains(message, "stopped") {
+		t.Fatalf("unexpected stop output: %s", message)
+	}
+	exit(t, <-done, 143, out.String(), diag.String())
+	r := s.receipt(t, out.String())
+	if r.Status != "interrupted" || r.Signal == nil || *r.Signal != "SIGTERM" {
+		t.Fatalf("wrong receipt: %s", out.String())
+	}
+	s.call(t, 1, "stop", "hold")
+}
+
 func TestRetention(t *testing.T) {
 	s := setup(t, "[jobs.demo]\ncommand = 'true'\nretention_days = 2\n")
 	now := time.Now().UTC()

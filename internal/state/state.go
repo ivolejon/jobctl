@@ -14,6 +14,7 @@ import (
 )
 
 const LogName = "output.log"
+const ProcessName = "process.json"
 const runLayout = "20060102T150405Z"
 
 var runIDPattern = regexp.MustCompile(`^[0-9]{8}T[0-9]{6}Z-[0-9a-f]{6}$`)
@@ -84,6 +85,38 @@ func WriteReceipt(dir string, r *Receipt) error {
 		return err
 	}
 	return AtomicWrite(filepath.Join(dir, "meta.json"), append(data, '\n'), 0600)
+}
+
+// Process identifies the running jobctl process so `jobctl stop` can signal it
+// after checking that the pid still belongs to the recorded process.
+type Process struct {
+	Version   int       `json:"version"`
+	PID       int       `json:"pid"`
+	StartedAt time.Time `json:"startedAt"`
+	PSStart   string    `json:"psStart"`
+}
+
+func WriteProcess(dir string, pid int, started time.Time, psStart string) error {
+	data, err := json.MarshalIndent(Process{Version: 1, PID: pid, StartedAt: started.UTC(), PSStart: psStart}, "", "  ")
+	if err != nil {
+		return err
+	}
+	return AtomicWrite(filepath.Join(dir, ProcessName), append(data, '\n'), 0600)
+}
+
+func ReadProcess(dir string) (*Process, error) {
+	data, err := os.ReadFile(filepath.Join(dir, ProcessName))
+	if err != nil {
+		return nil, err
+	}
+	var p Process
+	if err = json.Unmarshal(data, &p); err != nil {
+		return nil, err
+	}
+	if p.Version != 1 || p.PID <= 0 || p.StartedAt.IsZero() {
+		return nil, errors.New("invalid process record")
+	}
+	return &p, nil
 }
 
 // AtomicWrite replaces the file only after its contents have been synced.
@@ -177,6 +210,30 @@ func Latest(root, job string) (*Receipt, error) {
 		}
 	}
 	return latest, nil
+}
+
+func LatestRunning(root, job string) (*Receipt, string, error) {
+	base := Runs(root, job)
+	entries, err := candidates(base)
+	if err != nil {
+		return nil, "", err
+	}
+	var latest *Receipt
+	var latestDir string
+	for _, e := range entries {
+		if !e.IsDir() || !runIDPattern.MatchString(e.Name()) {
+			continue
+		}
+		dir := filepath.Join(base, e.Name())
+		r, err := readReceipt(dir)
+		if err != nil || r.Status != "running" {
+			continue
+		}
+		if latest == nil || r.StartedAt.After(latest.StartedAt) {
+			latest, latestDir = r, dir
+		}
+	}
+	return latest, latestDir, nil
 }
 
 func PublishLatest(root, job string) {
