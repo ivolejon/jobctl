@@ -1,0 +1,5 @@
+[jobs.demo]
+description = "Skriver en demo-fil i konfigurationens katalog"
+command = "printf 'jobctl demo\\n' > .jobctl-demo.txt && cat .jobctl-demo.txt"
+schedule = "daily 02:00"
+timeout = "30s"
